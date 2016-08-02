@@ -17,9 +17,9 @@ from PyQt4 import QtGui, QtCore
 import time
 import socket
 import threading
-import multiprocessing
 import random
 from hashlib import md5
+import pickle
 
 from pyftpdlib.handlers import FTPHandler, ThrottledDTPHandler
 from pyftpdlib.servers import ThreadedFTPServer 
@@ -43,10 +43,6 @@ ftp_cloak_port = 14415
 known_clients_DB = {} # DB: info received from remote chat clients
 
 status = False # false = offline, true = online
-
-# SETTINGS - globals
-btf_toggle = False # chat window: bring to front toggle - to fix
-snd_toggle = True # tea-time
 
 # main application window and all widgets e.g. buttons, text boxes etc
 class MainWindow(QtGui.QMainWindow):
@@ -455,7 +451,7 @@ class ChatWindow(QtGui.QWidget):
         except NameError:   # incase win32gui is not imported
             print(sys.exc_info())
 
-        if btf_toggle == True: # bring to front - to be linked in settings
+        if SW.btf_toggle_state == True: # bring to front
             self.setWindowState(
                 self.windowState() &
                 ~QtCore.Qt.WindowMinimized |
@@ -520,7 +516,7 @@ class ChatWindow(QtGui.QWidget):
             self.conn.sendall(b'<<b>>')
 
     def poked(self):
-        if snd_toggle == True:
+        if SW.snd_toggle_state == True:
             ding = simpleaudio.WaveObject.from_wave_file('audio/ting.wav')
             ding.play()
         else:
@@ -619,6 +615,16 @@ class SettingsWindow(QtGui.QWidget):
     def __init__(self):
         QtGui.QWidget.__init__(self)
         
+        if os.path.isfile(r'settings.txt') == False: # first time? create file
+            self.btf_toggle_state = False # chat window: bring to front
+            self.snd_toggle_state = False # tea-time
+            self.write_settings()
+        elif os.path.isfile(r'settings.txt') == True: # settings.txt exists, load settings
+            with open(r'settings.txt', 'rb') as settings_file:
+                (self.btf_toggle_state,
+                 self.snd_toggle_state) = pickle.load(settings_file)
+                
+        # next only when you click show does it update from the same memory location
         self.initUI()
 
     def closeSettings(self):
@@ -679,7 +685,7 @@ class SettingsWindow(QtGui.QWidget):
 
         self.snd_tog = QtGui.QCheckBox(self)
         self.snd_tog.move(25, 220)
-        self.snd_tog.setText(' Audio alerts')
+        self.snd_tog.setText(' Audio alert when poked')
 
         # save & cancel 
         self.save = QtGui.QPushButton('Save', self) 
@@ -690,15 +696,14 @@ class SettingsWindow(QtGui.QWidget):
         self.cancel.move(110, 264)
         self.cancel.clicked.connect(self.closeSettings)
         
-    def ShowIt(self):
+    def ShowIt(self): # repopulate as required
         if len(record) > 0:            
             self.alias.setText(record[0])
             self.first.setText(record[1])
             self.last.setText(record[2])
-        if btf_toggle == False:
-            self.btf_tog.setChecked(False)
-        else:
-            self.btf_tog.setChecked(True)
+
+        self.btf_tog.setChecked(self.btf_toggle_state)
+        self.snd_tog.setChecked(self.snd_toggle_state)
 
         self.show()
 
@@ -708,14 +713,25 @@ class SettingsWindow(QtGui.QWidget):
             len(self.last.displayText()) == 0):
             Warn('blank')
         else:
-            global record, btf_toggle # to be replace with object attribs
+            global record # to be replace with object attribs
             record = [] # clear
             record.append(self.alias.displayText())
             record.append(self.first.displayText())
             record.append(self.last.displayText())
-            new_user_details()
-            btf_toggle = self.btf_tog.checkState()
+
+            new_user_details() # write details to file again
+
+            self.btf_toggle_state = self.btf_tog.checkState()
+            self.snd_toggle_state = self.snd_tog.checkState()
+            self.write_settings()
+                
             self.closeSettings()
+
+    def write_settings(self):
+        with open(r'settings.txt', 'wb') as settings_file:
+            pickle.dump((self.btf_toggle_state,
+                         self.snd_toggle_state), settings_file)
+
 
 #=============================================================================#
 
