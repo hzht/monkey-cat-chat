@@ -53,18 +53,10 @@ class MainWindow(QtGui.QMainWindow):
         self.initUI()
 
     def initUI(self): # main window with all widget objects
-        self.setWindowIcon(QtGui.QIcon('images/appicon.png'))
         self.setFixedSize(200, 310)
+        self.setWindowIcon(QtGui.QIcon('images/appicon.png'))
         self.setWindowTitle('Monkey Cat Chat')
         
-        mwSettings = QtGui.QPushButton('Settings', self) # settings diag
-        mwSettings.setFixedSize(70,29)
-        mwSettings.move(15,30)
-        mwSettings.setIcon(QtGui.QIcon('images/settings.png'))
-        mwSettings.setIconSize(QtCore.QSize(21, 21))
-        mwSettings.setToolTip('Change Settings')
-        mwSettings.clicked.connect(SW.ShowIt)
-
         self.on = QtGui.QPushButton('On', self)
         self.on.setFixedSize(29,29)
         self.on.move(15, 70)
@@ -77,42 +69,73 @@ class MainWindow(QtGui.QMainWindow):
         self.off.setToolTip('Go Offline')
         self.off.setEnabled(False)
         self.off.clicked.connect(self.go_offline)
-
-        bolded=QtGui.QFont()
-        bolded.setBold(True)
-
-        # state colour
-        self.col1 = QtGui.QPalette()
-        self.col1.setColor(QtGui.QPalette.Foreground,QtCore.Qt.red)
-        self.col2 = QtGui.QPalette()
-        self.col2.setColor(QtGui.QPalette.Foreground,QtCore.Qt.blue)
-        
+    
         self.state = QtGui.QLabel('', self)
         self.state.setGeometry(135,40,48,48)  # x, y, width, height
         self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
 
-        mwL3 = QtGui.QLabel('Double click on person to begin chat', self)
-        mwL3.setFixedSize(200,12)
-        mwL3.move(15, 285)
+        self.add = QtGui.QPushButton('Add', self)
+        self.add.setFixedSize(70,29)
+        self.add.move(15, 70)
+        self.add.setIcon(QtGui.QIcon('images/invite.png'))
+        self.add.setIconSize(QtCore.QSize(21, 21))
+        self.add.setToolTip('Add IP address of colleague to chat')
+        self.add.clicked.connect(adder.show_it) # dialog box for adding IP
+        self.add.setVisible(False)
 
-        self.userlist = QtGui.QListWidget(self)  # list of users who are online
+        self.mwL3 = QtGui.QLabel('Double click on person to begin chat', self)
+        self.mwL3.setFixedSize(200,12)
+        self.mwL3.move(15, 285)
+
+        self.userlist = QtGui.QListWidget(self)  # list of online users
         self.userlist.move(15, 111)
         self.userlist.setFixedSize(170, 162)
         self.userlist.doubleClicked.connect(
             lambda: self.new_session(conn='', addr='', mode='initiator'))
+        
+        self.mwSettings = QtGui.QPushButton('Settings', self) # settings diag
+        self.mwSettings.setFixedSize(70,29)
+        self.mwSettings.move(15,30)
+        self.mwSettings.setIcon(QtGui.QIcon('images/settings.png'))
+        self.mwSettings.setIconSize(QtCore.QSize(21, 21))
+        self.mwSettings.setToolTip('Change Settings')
+        self.mwSettings.clicked.connect(SW.show_it)
 
-        mwHostname = QtGui.QAction('&Hostname', self)
-        mwHostname.triggered.connect(lambda: self.msg_box('hostname'))
-        mwAbout = QtGui.QAction('&About', self)
-        mwAbout.triggered.connect(lambda: self.msg_box('about')) 
+        self.mwHostname = QtGui.QAction('&Hostname', self)
+        self.mwHostname.triggered.connect(lambda: self.msg_box('hostname'))
+        self.mwAbout = QtGui.QAction('&About', self)
+        self.mwAbout.triggered.connect(lambda: self.msg_box('about')) 
 
-        mwMenuBar = QtGui.QHBoxLayout()
-        mwBar = self.menuBar()
-        mwHelp = mwBar.addMenu('&Help')
-        mwHelp.addAction(mwHostname)
-        mwHelp.addAction(mwAbout)
+        self.mwMenuBar = QtGui.QHBoxLayout()
+        self.mwBar = self.menuBar()
+        self.mwHelp = self.mwBar.addMenu('&Help')
+        self.mwHelp.addAction(self.mwHostname)
+        self.mwHelp.addAction(self.mwAbout)
 
         self.show()
+
+    def alternate_ui(self, mode):
+        if mode == False: # False = 'basic' mode
+            self.setFixedSize(200, 310)
+            self.on.setVisible(True)
+            self.off.setVisible(True)
+            self.state.setVisible(True)
+            self.mwL3.setVisible(True)
+            self.userlist.setVisible(True)
+            self.add.setVisible(False)
+
+        # needs to launch TCP_server and ftp server again ... 
+        elif mode == True: # True = 'advanced' mode
+            if status == True: # if in basic mode & 'On' state
+                self.go_offline()
+            
+            self.setFixedSize(100, 111)
+            self.on.setVisible(False)
+            self.off.setVisible(False)
+            self.state.setVisible(False)
+            self.mwL3.setVisible(False)
+            self.userlist.setVisible(False)
+            self.add.setVisible(True)
 
     def tcp_launch(self): # TCP server related calls
         self.tcp_server = TcpSvr()
@@ -126,7 +149,7 @@ class MainWindow(QtGui.QMainWindow):
             self.alias_name = self.unpacked[0][:-4]
             self.alias_state = self.unpacked[-1][1:]
             if self.alias_state == 'online':
-                try: # obtain IP from known_clients_DB and pass to CW instance
+                try: # obtain IP from known_clients_DB & pass to CW instance
                     for k, v in known_clients_DB.items():
                         if v[0] == self.alias_name:
                             self.sessions[v[0]] = ChatWindow(
@@ -169,7 +192,7 @@ class MainWindow(QtGui.QMainWindow):
         self.info.show()
 
     def go_online(self): # turn all services on
-        ReturningUser()
+        returning_user()
         if status == False:
             self.state.setGeometry(135,36,48,48)
             self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
@@ -194,8 +217,11 @@ class MainWindow(QtGui.QMainWindow):
     def go_offline(self): # clears the local DB & self.a-d + TcpSvr stop
         global status
         status = False
-        
-        self.e.stop()
+
+        try:
+            self.e.stop()
+        except AttributeError:
+            pass
 
         for i in self.sessions: # bye bye sessions
             self.sessions[i].interrupt()
@@ -216,7 +242,58 @@ class MainWindow(QtGui.QMainWindow):
             else:
                 self.userlist.addItem(
                     known_clients_DB[host][0] + '    : offline')
-            
+
+
+#=============================================================================#
+
+# Advanced mode, add IP dialog box
+class AddIPManually(QtGui.QWidget):
+    def __init__(self):
+            QtGui.QWidget.__init__(self)
+            self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Chat_v1.0')
+        self.setFixedSize(178, 65) # w x h
+
+        label = QtGui.QLabel('Enter remote host\'s IP address:', self)
+        label.move(15, 5)
+
+        btn = QtGui.QPushButton('Go', self)
+        btn.setFixedSize(30, 26)
+        btn.move(132, 27)
+        btn.clicked.connect(lambda: self.validate_ip(self.ipbox.displayText()))
+
+        self.ipbox = QtGui.QLineEdit(self)
+        self.ipbox.setFixedSize(105, 21)
+        self.ipbox.move(15, 30)
+
+    def show_it(self):
+        self.ipbox.clear()
+        self.show()
+
+    def validate_ip(self, n):
+        self.ip = n.split('.')
+        if len(self.ip) != 4:
+            warn('ip_err')
+        else:
+            for octet in self.ip:
+                if not octet.isdigit():
+                    warn('ip_err')
+                    self.ipbox.clear()
+                    break
+                if int(octet) < 0 or int(octet) > 255:
+                    warn('ip_err2')
+                    self.ipbox.clear()
+                    break
+            self.launch_connection() # kick it off! 
+
+    def launch_connection(self, ip):
+            pass # dialog box warn
+        # insert some exception handling...
+        self.close()
+
+
 #=============================================================================#
 
 # TCP SERVER
@@ -298,7 +375,7 @@ class ChatWindow(QtGui.QWidget):
         self.associated_sock_recv.start()
 
         self.connect(self.associated_sock_recv,
-                     QtCore.SIGNAL('chat_window_recv'), self.Receive_Text)
+                     QtCore.SIGNAL('chat_window_recv'), self.receive_text)
         self.connect(self.associated_sock_recv,
                      QtCore.SIGNAL('poke_request'), self.poked)
         self.connect(self.associated_sock_recv,
@@ -318,7 +395,7 @@ class ChatWindow(QtGui.QWidget):
                 QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
             if self.fit_warn == QtGui.QMessageBox.Yes:
                 try:
-                    self.closeSockets()
+                    self.close_sockets()
                 except Exception:
                     print(sys.exc_info())
                 finally:
@@ -326,11 +403,11 @@ class ChatWindow(QtGui.QWidget):
             else:
                 event.ignore()
         else:         
-            self.closeSockets()
+            self.close_sockets()
             self.close()
 
-    def closeSockets(self): # close session related TCP socks
-        try:    
+    def close_sockets(self): # close session related TCP socks
+        try:
             if self.mode == 'initiator': 
                 self.client.close()
             elif self.mode == 'acceptor':
@@ -346,7 +423,7 @@ class ChatWindow(QtGui.QWidget):
         # send message 
         self.send = QtGui.QPushButton('&send', self)
         self.send.move(210, 230)
-        self.send.clicked.connect(self.Send_Text)
+        self.send.clicked.connect(self.send_text)
 
         self.log = QtGui.QTextEdit(self)
         self.log.setFixedSize(270, 175)
@@ -388,10 +465,7 @@ class ChatWindow(QtGui.QWidget):
         
         self.show()
 
-    def ShowIt(self):
-        self.show()
-
-    def Send_Text(self, msgs=None, fname=None, fnamealt=None):
+    def send_text(self, msgs=None, fname=None, fnamealt=None):
         self.log.setTextCursor(self.cursor) # move cursor to bottom
         if not msgs:
             try: 
@@ -436,7 +510,7 @@ class ChatWindow(QtGui.QWidget):
             except Exception:
                  print(sys.exc_info())
         
-    def Receive_Text(self, datapipe): # refactor?
+    def receive_text(self, datapipe): # refactor?
         self.datapipe = datapipe # holds ClientThreadRecv i.e. self.conn.recv()
         self.log.setTextCursor(self.cursor)
         if self.mode == 'initiator' and datapipe != b'<<b>>':
@@ -534,7 +608,7 @@ class ChatWindow(QtGui.QWidget):
         try:
             if msgtype == 'sent_file':
                 self.log.insertPlainText('\n*** file successfully sent ***\n')
-                self.Send_Text(msgs='ft_complete')
+                self.send_text(msgs='ft_complete')
                 self.multiple_fit[fobj][1] = False
                 self.f_in_transit = False    
             else: 
@@ -561,7 +635,7 @@ class ChatWindow(QtGui.QWidget):
                     else:
                         self.log.insertPlainText(
                             '\n*** sending file [%s] ***\n' % fobj)
-                    self.Send_Text(
+                    self.send_text(
                         msgs='ft_initiate', fname=fobj, fnamealt=fobjalt)
                 elif msgtype == 'ft_cancelled':
                     self.log.insertPlainText(
@@ -614,17 +688,15 @@ class ChatWindow(QtGui.QWidget):
 class SettingsWindow(QtGui.QWidget):
     def __init__(self):
         QtGui.QWidget.__init__(self)
-        
+        self.mode_of_operation = False # False = 'basic', True = 'advanced'
         if os.path.isfile(r'settings.txt') == False: # first time? create file
             self.btf_toggle_state = False # chat window: bring to front
             self.snd_toggle_state = False # tea-time
             self.write_settings()
-        elif os.path.isfile(r'settings.txt') == True: # settings.txt exists, load settings
+        elif os.path.isfile(r'settings.txt') == True: # load from settings.txt
             with open(r'settings.txt', 'rb') as settings_file:
                 (self.btf_toggle_state,
                  self.snd_toggle_state) = pickle.load(settings_file)
-                
-        # next only when you click show does it update from the same memory location
         self.initUI()
 
     def closeSettings(self):
@@ -637,20 +709,16 @@ class SettingsWindow(QtGui.QWidget):
         # labels
         self.L0 = QtGui.QLabel('Alias: ', self)
         self.L0.move(15,15)
-
         self.L1 = QtGui.QLabel('First Name: ', self)
         self.L1.move(15,45)
-
         self.L2 = QtGui.QLabel('Last Name: ', self)
         self.L2.move(15,75)
 
         # text boxes
         self.alias = QtGui.QLineEdit(self)
         self.alias.move(75, 12)
-        
         self.first = QtGui.QLineEdit(self)
         self.first.move(75, 43)
-        
         self.last = QtGui.QLineEdit(self) 
         self.last.move(75, 73)
 
@@ -690,28 +758,33 @@ class SettingsWindow(QtGui.QWidget):
         # save & cancel 
         self.save = QtGui.QPushButton('Save', self) 
         self.save.move(15, 264)
-        self.save.clicked.connect(self.CaptureSettings)
+        self.save.clicked.connect(self.capture_settings)
         
         self.cancel = QtGui.QPushButton('Cancel', self)
         self.cancel.move(110, 264)
         self.cancel.clicked.connect(self.closeSettings)
         
-    def ShowIt(self): # repopulate as required
+    def show_it(self): # repopulate as required
         if len(record) > 0:            
             self.alias.setText(record[0])
             self.first.setText(record[1])
             self.last.setText(record[2])
 
+        if self.mode_of_operation == False:
+            self.operation_mode.setChecked(False)
+        elif self.mode_of_operation == True:
+            self.operation_mode.setChecked(True)
+            
         self.btf_tog.setChecked(self.btf_toggle_state)
         self.snd_tog.setChecked(self.snd_toggle_state)
 
         self.show()
 
-    def CaptureSettings(self):
+    def capture_settings(self):
         if (len(self.alias.displayText()) == 0 or
             len(self.first.displayText()) == 0 or
             len(self.last.displayText()) == 0):
-            Warn('blank')
+            warn('blank')
         else:
             global record # to be replace with object attribs
             record = [] # clear
@@ -721,10 +794,11 @@ class SettingsWindow(QtGui.QWidget):
 
             new_user_details() # write details to file again
 
-            self.btf_toggle_state = self.btf_tog.checkState()
-            self.snd_toggle_state = self.snd_tog.checkState()
-            self.write_settings()
-                
+            self.btf_toggle_state = bool(self.btf_tog.checkState())
+            self.snd_toggle_state = bool(self.snd_tog.checkState())
+            self.alternate_state() # only modify GUI if state changes
+
+            self.write_settings()    
             self.closeSettings()
 
     def write_settings(self):
@@ -732,18 +806,25 @@ class SettingsWindow(QtGui.QWidget):
             pickle.dump((self.btf_toggle_state,
                          self.snd_toggle_state), settings_file)
 
+    def alternate_state(self):
+        if self.mode_of_operation != bool(self.operation_mode.checkState()):
+            self.mode_of_operation = bool(self.operation_mode.checkState())
+            AW.alternate_ui(bool(self.operation_mode.checkState()))
+        else:
+            pass
+
 
 #=============================================================================#
 
 # USER DETAILS - to become MainWindow obj attributes
-def ReturningUser():
+def returning_user():
     global status
     if os.path.isfile(user_file) == True:
         old_user_details() # open or create file
         status = True 
     else: # first time running app, requires alias, first & last name
         status = False 
-        Warn('first')
+        warn('first')
     
 def old_user_details():
     global record
@@ -759,7 +840,7 @@ def new_user_details():
 
 
 # FIRST LAUNCH or NO SETTINGS SET - to be mw obj attrib
-def Warn(flag):
+def warn(flag):
     msg = QtGui.QMessageBox()
     msg.setWindowTitle("Chat v1")
     if flag == 'first':
@@ -768,7 +849,11 @@ def Warn(flag):
             'First and Last name fields in the settings menu.')
     elif flag == 'blank':
         msg.setText('You need to ensure all fields are filled in.')
-
+    elif flag == 'ip_err':
+        msg.setText('You need to enter an IP address in the proper format '
+                    'e.g. 192.168.0.2')
+    elif flag == 'ip_err2':
+        msg.setText('IP address entered is out of range.')
     msg.exec()
 
 #=============================================================================#
@@ -1045,9 +1130,10 @@ def db_cleanup():
 if __name__ == '__main__':
     
     Application = QtGui.QApplication(sys.argv)
-    ReturningUser() # check if first run or returning user
+    returning_user() # check if first run or returning user
 
-    SW = SettingsWindow() 
+    SW = SettingsWindow()
+    adder = AddIPManually()
     AW = MainWindow()
 
     sys.exit(Application.exec_()) # to do - ensure all threads stop properly
