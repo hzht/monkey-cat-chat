@@ -116,6 +116,8 @@ class MainWindow(QtGui.QMainWindow):
 
     def alternate_ui(self, mode):
         if mode == False: # False = 'basic' mode
+            self.go_offline() # initiate entire suite regardless
+            
             self.setFixedSize(200, 310)
             self.on.setVisible(True)
             self.off.setVisible(True)
@@ -124,11 +126,14 @@ class MainWindow(QtGui.QMainWindow):
             self.userlist.setVisible(True)
             self.add.setVisible(False)
 
-        # needs to launch TCP_server and ftp server again ... 
         elif mode == True: # True = 'advanced' mode
             if status == True: # if in basic mode & 'On' state
                 self.go_offline()
-            
+
+            self.tcp_launch() # starts TCP server chain
+            self.e = FtpSvr() # instance of threading obj
+            self.e.start()
+
             self.setFixedSize(100, 111)
             self.on.setVisible(False)
             self.off.setVisible(False)
@@ -136,6 +141,9 @@ class MainWindow(QtGui.QMainWindow):
             self.mwL3.setVisible(False)
             self.userlist.setVisible(False)
             self.add.setVisible(True)
+
+            global status
+            status = True # only time all services are offline & status = True
 
     def tcp_launch(self): # TCP server related calls
         self.tcp_server = TcpSvr()
@@ -170,6 +178,13 @@ class MainWindow(QtGui.QMainWindow):
                 addr=self.addr,
                 mode='acceptor')
 
+        elif mode == 'adv_initiate': # add manually IP addr in adv mode
+            self.addr = addr
+            try:
+                self.sessions[addr] = ChatWindow(name=self.addr, ip=self.addr, mode='initiator')
+            except Exception:
+                pass
+
     def msg_box(self, msgtype): 
         self.info = QtGui.QMessageBox()
         self.info.setStandardButtons(QtGui.QMessageBox.Ok)
@@ -196,7 +211,8 @@ class MainWindow(QtGui.QMainWindow):
         if status == False:
             self.state.setGeometry(135,36,48,48)
             self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
-        elif status == True: 
+        elif status == True:
+            self.state.setPixmap(QtGui.QPixmap('images/online.png'))
             self.a = threading.Thread(
                 target=transceiver, name='transceiver', daemon=True).start()
             self.b = threading.Thread(
@@ -209,8 +225,6 @@ class MainWindow(QtGui.QMainWindow):
             self.e = FtpSvr() # instance of threading obj
             self.e.start()
 
-            self.state.setPixmap(QtGui.QPixmap('images/online.png'))
-        
             self.on.setEnabled(False) # deterrent for consecutive on/off clicks
             self.off.setEnabled(True)
         
@@ -286,10 +300,10 @@ class AddIPManually(QtGui.QWidget):
                     warn('ip_err2')
                     self.ipbox.clear()
                     break
-            self.launch_connection() # kick it off! 
+            self.launch_connection(n) # kick it off! 
 
     def launch_connection(self, ip):
-            pass # dialog box warn
+        AW.new_session(conn='', addr=ip, mode='adv_initiate')
         # insert some exception handling...
         self.close()
 
@@ -681,9 +695,9 @@ class ChatWindow(QtGui.QWidget):
                 self.conn.close()
         except Exception:
             print(sys.exc_info())
-        
+
 #=============================================================================#
-            
+
 # SETTINGS WINDOW
 class SettingsWindow(QtGui.QWidget):
     def __init__(self):
@@ -806,7 +820,7 @@ class SettingsWindow(QtGui.QWidget):
             pickle.dump((self.btf_toggle_state,
                          self.snd_toggle_state), settings_file)
 
-    def alternate_state(self):
+    def alternate_state(self): # ensures change state only if state changes
         if self.mode_of_operation != bool(self.operation_mode.checkState()):
             self.mode_of_operation = bool(self.operation_mode.checkState())
             AW.alternate_ui(bool(self.operation_mode.checkState()))
