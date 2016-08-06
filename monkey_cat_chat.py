@@ -182,8 +182,9 @@ class MainWindow(QtGui.QMainWindow):
             self.addr = addr
             try:
                 self.sessions[addr] = ChatWindow(name=self.addr, ip=self.addr, mode='initiator')
-            except Exception:
-                pass
+            except TimeoutError: # unresponsive or offline remote host
+                self.msg_box('adv_warning')
+                print(sys.exc_info())
 
     def msg_box(self, msgtype): 
         self.info = QtGui.QMessageBox()
@@ -203,7 +204,10 @@ class MainWindow(QtGui.QMainWindow):
                 'hostname: ' + socket.gethostname() + '\n' + 'IP addr: '
                 + socket.gethostbyname(socket.gethostname()))
             self.info.setWindowTitle('Hostname | IP')
-
+        elif msgtype == 'adv_warning':
+            self.info.setText('Unable to connect to specified IP address, '
+                              'person may be offline.')
+            self.info.setWindowTitle('Warning!')
         self.info.show()
 
     def go_online(self): # turn all services on
@@ -285,8 +289,25 @@ class AddIPManually(QtGui.QWidget):
     def show_it(self):
         self.ipbox.clear()
         self.show()
+    
+    def port_verifier(self, n): # verify chat_session_port is open on rhost
+        try:            
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.s.settimeout(1)
+            self.test_result = self.s.connect_ex((n, chat_session_port))
+        except Exception:
+            print(sys.exc_info())
+        finally:
+            print(self.s)
+            self.s.close()
+            print(self.test_result)
 
-    def validate_ip(self, n):
+        if self.test_result == 0: # chat_session_port IS open on rhost
+            self.launch_connection(n) # kick it off!
+        elif self.test_result != 0:
+            AW.msg_box('adv_warning')
+    
+    def validate_ip(self, n): # ensure IP entered is to IPv4 standard
         self.ip = n.split('.')
         if len(self.ip) != 4:
             warn('ip_err')
@@ -300,11 +321,10 @@ class AddIPManually(QtGui.QWidget):
                     warn('ip_err2')
                     self.ipbox.clear()
                     break
-            self.launch_connection(n) # kick it off! 
+            self.port_verifier(n)
 
     def launch_connection(self, ip):
         AW.new_session(conn='', addr=ip, mode='adv_initiate')
-        # insert some exception handling...
         self.close()
 
 
@@ -346,6 +366,7 @@ class ClientThreadRecv(QtCore.QThread): # receiving component loop
                     break
                 elif self.data == b'<<b>>':
                     self.emit(QtCore.SIGNAL('poke_request'))
+                # elif statement for emojis! 
         except (ConnectionAbortedError, ConnectionResetError,
                 OSError, WindowsError):
             print(sys.exc_info()) # catch em all (or almost all)! 
@@ -382,7 +403,7 @@ class ChatWindow(QtGui.QWidget):
         elif self.mode == 'acceptor': # initiate conn calls for send/receive
             self.associated_sock_recv = ClientThreadRecv(self.conn,
                                                          addr=self.addr)
-            for key in known_clients_DB: # 4 missing alias
+            for key in known_clients_DB: # for missing alias
                 if known_clients_DB[key][3] == addr[0]:
                     self.wintitle = known_clients_DB[key][0] 
 
