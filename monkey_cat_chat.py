@@ -26,6 +26,8 @@ from pyftpdlib.servers import ThreadedFTPServer
 from pyftpdlib.authorizers import DummyAuthorizer, AuthenticationFailed
 import ftplib
 
+import emoji # includes class 'SelectEmoji' & global var 'ed', emoji dict
+
 try: 
     import win32gui, simpleaudio # 3rd party & OS dependent modules
 except ImportError:
@@ -181,7 +183,8 @@ class MainWindow(QtGui.QMainWindow):
         elif mode == 'adv_initiate': # add manually IP addr in adv mode
             self.addr = addr
             try:
-                self.sessions[addr] = ChatWindow(name=self.addr, ip=self.addr, mode='initiator')
+                self.sessions[addr] = ChatWindow(name=self.addr,
+                                                 ip=self.addr,mode='initiator')
             except TimeoutError: # unresponsive or offline remote host
                 self.msg_box('adv_warning')
                 print(sys.exc_info())
@@ -391,6 +394,9 @@ class ChatWindow(QtGui.QWidget):
         self.addr = addr
         self.mode = mode
 
+        self.emo_kid = emoji.SelectEmoji() # emoji popup object
+        self.emo_buffer_send = [] # buffer per message - cleared upon 'send'
+        self.emo_buffer_log = [] # mirrored list - cleared upon update to log
         self.multiple_fit = dict() # keeps entires of all FIT streams (send)
         self.f_in_transit = False # flag for file(s) transfer in prog (send)
         
@@ -415,6 +421,8 @@ class ChatWindow(QtGui.QWidget):
                      QtCore.SIGNAL('poke_request'), self.poked)
         self.connect(self.associated_sock_recv,
                      QtCore.SIGNAL('connection_error'), self.msgs_n_errors)
+        self.connect(self.emo_kid, QtCore.SIGNAL('emoji_to_input'),
+                     self.add_emoji) # catch emit from emoji mod
         
         self.initUI()
 
@@ -463,7 +471,7 @@ class ChatWindow(QtGui.QWidget):
         self.log = QtGui.QTextEdit(self)
         self.log.setFixedSize(270, 175)
         self.log.move(15,15)
-        self.log.setReadOnly(True)
+        self.log.setReadOnly(False)
         self.log.verticalScrollBar()
         self.cursor = QtGui.QTextCursor(self.log.document())
 
@@ -490,15 +498,61 @@ class ChatWindow(QtGui.QWidget):
                                     'to remote user')
         self.poke_button.clicked.connect(self.do_some_poking)
 
+        # emoji button
+        self.add_emoji_button = QtGui.QPushButton('', self)
+        self.add_emoji_button.setFixedSize(24, 24)
+        self.add_emoji_button.move(75, 198)
+        self.add_emoji_button.setIcon(QtGui.QIcon('images/smiley.png'))
+        self.add_emoji_button.setIconSize(QtCore.QSize(22, 22))
+        self.add_emoji_button.setToolTip('Add emoji to your message')
+        self.add_emoji_button.clicked.connect(self.emo_kid.show_it)
+
         # invite to conversation
         self.invite_button = QtGui.QPushButton('', self)
         self.invite_button.setFixedSize(24, 24)
-        self.invite_button.move(75, 198)
+        self.invite_button.move(105, 198)
         self.invite_button.setIcon(QtGui.QIcon('images/invite.png'))
         self.invite_button.setIconSize(QtCore.QSize(22, 22))
         self.invite_button.setToolTip('Invite others to this conversation')
         
         self.show()
+
+    def add_emoji(self, icon):
+        smiley = QtGui.QPixmap(emoji.ed[icon]).toImage()
+        self.user_input.textCursor().insertImage(smiley)
+        self.emo_buffer_send.append(icon) # for use in transmission of msg
+        self.emo_buffer_log.append(icon) # for use in updating self.log
+
+    def parse_txt(self, raw, mode): # for emoji, 1)send 2)log or 3)receive
+        parsing = ''
+        if mode == 'to_transf':
+            for char in raw:
+                if char == u'\ufffc':
+                    lookup = self.emo_buffer_send.pop(0)
+                    parsing += lookup
+                else: # normal text
+                    parsing += char
+            return parsing
+        elif mode == 'sender_self.log': # refactor build entire string first
+            self.log.insertPlainText('you: ')
+            for char in raw:
+                if char == u'\ufffc':
+                    smiley = QtGui.QPixmap(
+                        emoji.ed[self.emo_buffer_log.pop(0)]).toImage()
+                    self.log.textCursor().insertImage(smiley)
+                else: # normal text
+                    self.log.insertPlainText(char)
+        elif mode == 'receiver_self.log':
+            disect = str(raw, 'utf-8')
+            split = disect.split(':')
+            for block in split:
+                if ':'+block+':' in emoji.ed: # found in emo dict
+                    smiley = QtGui.QPixmap(
+                        emoji.ed[':'+block+':']).toImage()
+                    self.log.textCursor().insertImage(smiley)
+                else: # normal text
+                    self.log.insertPlainText(block)
+        self.log.setTextCursor(self.cursor) # cursor to bottom                
 
     def send_text(self, msgs=None, fname=None, fnamealt=None):
         self.log.setTextCursor(self.cursor) # move cursor to bottom
@@ -506,19 +560,24 @@ class ChatWindow(QtGui.QWidget):
             try: 
                 if self.mode == 'initiator':    
                     self.string = self.user_input.toPlainText() + '\n'
+                    self.parsed = self.parse_txt(self.string, mode='to_transf')
                     self.cl_socket.sendall(
-                        bytearray((record[0] + ': ' + self.string)
+                        bytearray((record[0] + ': ' + self.parsed)
                                   .encode('utf-8'))) # alias prefix
-                    self.log.insertPlainText('you: ' + self.string) # log
                 elif self.mode == 'acceptor':
                     self.string = self.user_input.toPlainText() + '\n'
+                    self.parsed = self.parse_txt(self.string, mode='to_transf')
                     self.conn.sendall(
-                        bytearray((record[0] + ': ' + self.string)
+                        bytearray((record[0] + ': ' + self.parsed)
                                   .encode('utf-8')))
-                    self.log.insertPlainText('you: ' + self.string)
             except Exception:
                 print(sys.exc_info())
+                
+            self.parse_txt(self.string, mode='sender_self.log')    
             self.user_input.clear() # clear the input text box
+            self.emo_buffer_send.clear() # clear emoji buffer
+            self.emo_buffer_log.clear() # clear mirror
+
         elif msgs == 'ft_initiate': # cheat - all FT sigs controlled by client
             if fnamealt != None:
                 self.string = ('\n*** receiving file [' + fname + '] as ' +
@@ -549,9 +608,9 @@ class ChatWindow(QtGui.QWidget):
         self.datapipe = datapipe # holds ClientThreadRecv i.e. self.conn.recv()
         self.log.setTextCursor(self.cursor)
         if self.mode == 'initiator' and datapipe != b'<<b>>':
-            self.log.insertPlainText(str(self.datapipe, 'utf-8'))
+            self.parse_txt(self.datapipe, mode='receiver_self.log') # parse
         elif self.mode == 'acceptor' and datapipe != b'<<b>>':
-            self.log.insertPlainText(str(self.datapipe, 'utf-8'))
+            self.parse_txt(self.datapipe, mode='receiver_self.log') # parse
         elif datapipe == b'<<b>>':
             pass
         
