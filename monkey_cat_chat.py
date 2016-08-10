@@ -117,6 +117,7 @@ class MainWindow(QtGui.QMainWindow):
         self.show()
 
     def alternate_ui(self, mode):
+        global status
         if mode == False: # False = 'basic' mode
             self.go_offline() # initiate entire suite regardless
             
@@ -132,10 +133,6 @@ class MainWindow(QtGui.QMainWindow):
             if status == True: # if in basic mode & 'On' state
                 self.go_offline()
 
-            self.tcp_launch() # starts TCP server chain
-            self.e = FtpSvr() # instance of threading obj
-            self.e.start()
-
             self.setFixedSize(100, 111)
             self.on.setVisible(False)
             self.off.setVisible(False)
@@ -144,8 +141,12 @@ class MainWindow(QtGui.QMainWindow):
             self.userlist.setVisible(False)
             self.add.setVisible(True)
 
-            global status
             status = True # only time all services are offline & status = True
+            # why above ln? CW will display 'offline' lest status is True
+            # tight coupling to be fixed
+            self.tcp_launch() # starts TCP server chain
+            self.e = FtpSvr() # instance of threading obj
+            self.e.start()
 
     def tcp_launch(self): # TCP server related calls
         self.tcp_server = TcpSvr()
@@ -214,7 +215,7 @@ class MainWindow(QtGui.QMainWindow):
         self.info.show()
 
     def go_online(self): # turn all services on
-        returning_user()
+        returning_user() # first determination of global 'status'
         if status == False:
             self.state.setGeometry(135,36,48,48)
             self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
@@ -447,6 +448,7 @@ class ChatWindow(QtGui.QWidget):
                 event.ignore()
         else:         
             self.close_sockets()
+            self.emo_kid.close() 
             self.close()
 
     def close_sockets(self): # close session related TCP socks
@@ -533,7 +535,7 @@ class ChatWindow(QtGui.QWidget):
                 else: # normal text
                     parsing += char
             return parsing
-        elif mode == 'sender_self.log': # refactor build entire string first
+        elif mode == 'sender_self.log': # refactor build entire string first?
             self.log.insertPlainText('you: ')
             for char in raw:
                 if char == u'\ufffc':
@@ -544,11 +546,11 @@ class ChatWindow(QtGui.QWidget):
                     self.log.insertPlainText(char)
         elif mode == 'receiver_self.log':
             disect = str(raw, 'utf-8')
-            split = disect.split(':')
+            split = disect.split('<?>')
             for block in split:
-                if ':'+block+':' in emoji.ed: # found in emo dict
+                if '<?>'+block+'<?>' in emoji.ed: # found in emo dict
                     smiley = QtGui.QPixmap(
-                        emoji.ed[':'+block+':']).toImage()
+                        emoji.ed['<?>'+block+'<?>']).toImage()
                     self.log.textCursor().insertImage(smiley)
                 else: # normal text
                     self.log.insertPlainText(block)
@@ -765,7 +767,9 @@ class ChatWindow(QtGui.QWidget):
         self.send_file_button.setEnabled(False)
         self.poke_button.setEnabled(False)
         self.invite_button.setEnabled(False)
+        self.add_emoji_button.setEnabled(False)
         self.user_input.setReadOnly(True)
+        self.emo_kid.close()
 
     def interrupt(self): # called by MW when going 'offline'
         try:
@@ -831,9 +835,9 @@ class SettingsWindow(QtGui.QWidget):
         self.operation_mode.move(25, 126)
         self.operation_mode.setText(' Advanced (stealth mode)')
         self.operation_mode.setToolTip(
-            'Disable publishing of status, '
-            'use manual IP add to '
-            'connect to other users')
+            'Appear \'offline\' but be available for manual IP connection. \n'
+            'Connect to another user by manually adding their IP address. \n'
+            'Note, you won\'t be able to see the status of others either.')
         
         # messenger window settings
         group_b = QtGui.QGroupBox(self)
@@ -960,7 +964,7 @@ def transceiver():
     trans.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     trans.bind(('', transceiver_port))
     
-    while status == True: # sentinel
+    while status == True and SW.mode_of_operation == False: # sentinel
         msg = trans.recvfrom(1024)
         if msg[1][0] == socket.gethostbyname(socket.gethostname()): 
             continue # ignore local broadcasts - requires dirty trick below
@@ -1004,11 +1008,11 @@ def beacon():   # needs to run as a daemon / service
     broadcast = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     broadcast.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-    while status == True: # sentinel - nested loop creates 'immediate' end
+    while status == True and SW.mode_of_operation == False: # sentinel
         broadcast.sendto(
             bytearray(create_message('record').encode('utf-8')),
             ('255.255.255.255', transceiver_port))
-        while status == True:
+        while status == True: # nested loop creates 'immediate' end
             time.sleep(1)
             beacon_interval -= 1
             if beacon_interval != 0:
@@ -1030,7 +1034,7 @@ def pinger(ip=None, mode=None): # starts when len(records) > 0 in DB
             bytearray(create_message('record').encode('utf-8')),
             (ip, transceiver_port))
     else: 
-        while status == True:
+        while status == True and SW.mode_of_operation == False:
             try: 
                 if len(known_clients_DB) > 0: # sentinel
                     for host in known_clients_DB:
@@ -1195,7 +1199,7 @@ def db_cleanup():
     global known_clients_DB
     expired = []
     
-    while status == True:
+    while status == True and SW.mode_of_operation == False:
         time.sleep(1) # fixes cpu spike
         if len(known_clients_DB) <= 0:
             expired = []

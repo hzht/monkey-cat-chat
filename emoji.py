@@ -6,21 +6,21 @@ http://emojipedia.org/samsung/
 
 from PyQt4 import QtGui, QtCore
 
-ed = {':emo01:': 'images/emoji/bigsmile.png', # emoji dictionary
-      ':emo02:': 'images/emoji/nerdluck.png',
-      ':emo03:': 'images/emoji/overjoy.png',
-      ':emo04:': 'images/emoji/stoopid.png',
-      ':emo05:': 'images/emoji/thinking.png',
-      ':emo06:': 'images/emoji/wideeyed.png',
-      ':emo07:': 'images/emoji/cryjoy.png',
-      ':emo08:': 'images/emoji/nomouth.png',
-      ':emo09:': 'images/emoji/shocked.png',
-      ':emo10:': 'images/emoji/yuck.png',
-      ':emo11:': 'images/emoji/unamused.png',
-      ':emo12:': 'images/emoji/zipped.png',
-      ':emo13:': 'images/emoji/ohh.png',
-      ':emo14:': 'images/emoji/noexpress.png',
-      ':emo15:': 'images/emoji/natural.png',
+ed = {'<?>01<?>': 'images/emoji/bigsmile.png', # emoji dictionary
+      '<?>02<?>': 'images/emoji/nerdluck.png',
+      '<?>03<?>': 'images/emoji/overjoy.png',
+      '<?>04<?>': 'images/emoji/stoopid.png',
+      '<?>05<?>': 'images/emoji/thinking.png',
+      '<?>06<?>': 'images/emoji/wideeyed.png',
+      '<?>07<?>': 'images/emoji/cryjoy.png',
+      '<?>08<?>': 'images/emoji/nomouth.png',
+      '<?>09<?>': 'images/emoji/shocked.png',
+      '<?>10<?>': 'images/emoji/yuck.png',
+      '<?>11<?>': 'images/emoji/unamused.png',
+      '<?>12<?>': 'images/emoji/zipped.png',
+      '<?>13<?>': 'images/emoji/ohh.png',
+      '<?>14<?>': 'images/emoji/noexpress.png',
+      '<?>15<?>': 'images/emoji/natural.png',
       }
 
 class SelectEmoji(QtGui.QTextBrowser): 
@@ -31,21 +31,21 @@ class SelectEmoji(QtGui.QTextBrowser):
 
         bs = '&nbsp;' * 3
         self.setHtml(
-            '<a href="::emo01:"><img src=' + ed[':emo01:'] + '/></a>'+bs+
-            '<a href="::emo02:"><img src=' + ed[':emo02:'] + '/></a>'+bs+
-            '<a href="::emo03:"><img src=' + ed[':emo03:'] + '/></a>'+bs+
-            '<a href="::emo04:"><img src=' + ed[':emo04:'] + '/></a>'+bs+
-            '<a href="::emo05:"><img src=' + ed[':emo05:'] + '/></a>'
-            '<a href="::emo06:"><img src=' + ed[':emo06:'] + '/></a>'+bs+
-            '<a href="::emo07:"><img src=' + ed[':emo07:'] + '/></a>'+bs+
-            '<a href="::emo08:"><img src=' + ed[':emo08:'] + '/></a>'+bs+
-            '<a href="::emo09:"><img src=' + ed[':emo09:'] + '/></a>'+bs+
-            '<a href="::emo10:"><img src=' + ed[':emo10:'] + '/></a>'
-            '<a href="::emo11:"><img src=' + ed[':emo11:'] + '/></a>'+bs+
-            '<a href="::emo12:"><img src=' + ed[':emo12:'] + '/></a>'+bs+
-            '<a href="::emo13:"><img src=' + ed[':emo13:'] + '/></a>'+bs+
-            '<a href="::emo14:"><img src=' + ed[':emo14:'] + '/></a>'+bs+
-            '<a href="::emo15:"><img src=' + ed[':emo15:'] + '/></a>'
+            '<a href="<?>01<?>"><img src=' + ed['<?>01<?>'] + '/></a>'+bs+
+            '<a href="<?>02<?>"><img src=' + ed['<?>02<?>'] + '/></a>'+bs+
+            '<a href="<?>03<?>"><img src=' + ed['<?>03<?>'] + '/></a>'+bs+
+            '<a href="<?>04<?>"><img src=' + ed['<?>04<?>'] + '/></a>'+bs+
+            '<a href="<?>05<?>"><img src=' + ed['<?>05<?>'] + '/></a>'
+            '<a href="<?>06<?>"><img src=' + ed['<?>06<?>'] + '/></a>'+bs+
+            '<a href="<?>07<?>"><img src=' + ed['<?>07<?>'] + '/></a>'+bs+
+            '<a href="<?>08<?>"><img src=' + ed['<?>08<?>'] + '/></a>'+bs+
+            '<a href="<?>09<?>"><img src=' + ed['<?>09<?>'] + '/></a>'+bs+
+            '<a href="<?>10<?>"><img src=' + ed['<?>10<?>'] + '/></a>'
+            '<a href="<?>11<?>"><img src=' + ed['<?>11<?>'] + '/></a>'+bs+
+            '<a href="<?>12<?>"><img src=' + ed['<?>12<?>'] + '/></a>'+bs+
+            '<a href="<?>13<?>"><img src=' + ed['<?>13<?>'] + '/></a>'+bs+
+            '<a href="<?>14<?>"><img src=' + ed['<?>14<?>'] + '/></a>'+bs+
+            '<a href="<?>15<?>"><img src=' + ed['<?>15<?>'] + '/></a>'
             )
         
         self.setFocusPolicy(QtCore.Qt.NoFocus) # hide dotted border on click
