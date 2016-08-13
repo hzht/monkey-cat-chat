@@ -302,9 +302,7 @@ class AddIPManually(QtGui.QWidget):
         except Exception:
             print(sys.exc_info())
         finally:
-            print(self.s)
             self.s.close()
-            print(self.test_result)
 
         if self.test_result == 0: # chat_session_port IS open on rhost
             self.launch_connection(n) # kick it off!
@@ -398,7 +396,7 @@ class ChatWindow(QtGui.QWidget):
         self.emo_kid = emoji.SelectEmoji() # emoji popup object
         self.emo_buffer_send = [] # buffer per message - cleared upon 'send'
         self.emo_buffer_log = [] # mirrored list - cleared upon update to log
-        self.multiple_fit = dict() # keeps entires of all FIT streams (send)
+        self.multiple_fit = dict() # keeps entries of all FIT streams (send)
         self.f_in_transit = False # flag for file(s) transfer in prog (send)
         
         if self.mode == 'initiator': # initiate conn calls for send/receive
@@ -740,6 +738,9 @@ class ChatWindow(QtGui.QWidget):
                 elif msgtype == 'ft_refused':
                     self.log.insertPlainText(
                         '\n*** remote user appears to be offline ***\n')
+                    
+            self.log.setTextCursor(self.cursor)
+            
         except AttributeError: # caters for non-existent self.f_in_transit
             print(sys.exc_info())
             pass 
@@ -1078,12 +1079,12 @@ class FtpSvr(threading.Thread):
 
         self.dtp_handler = ThrottledDTPHandler
         self.dtp_handler.read_limit = 30720  # 30kb/sec (30 * 1024)
-        self.dtp_handler.read_limit = 30720
         self.dtp_handler.write_limit = 30720
         
         self.handler = FtpSvrHandler
         self.handler.authorizer = self.authorizer
-        self.server = ThreadedFTPServer(('', ftp_cloak_port), self.handler)
+        self.server = ThreadedFTPServer(('0.0.0.0', ftp_cloak_port),
+                                        self.handler)
         self.server.serve_forever() 
 
     def stop(self):
@@ -1145,7 +1146,6 @@ class FtpClient(QtCore.QThread):
             self.sess = ftplib.FTP()
             self.sess.connect(self.svr, ftp_cloak_port)
             self.sess.login(user='userA', passwd='12345')
-            
             with open(self.ffpath, 'rb') as self.file_obj:
                 try: # nihongo desu ka? (is it japanese? or greek?)
                     self.connection = self.sess.transfercmd(
@@ -1180,8 +1180,9 @@ class FtpClient(QtCore.QThread):
                 finally:
                     self.connection.close()
                     self.sess.close()
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError, EOFError):
             self.emit(QtCore.SIGNAL('ftp_login_error'), 'ft_refused')
+            print('except: #15', sys.exc_info())
             pass
 
     def byebye(self): # quaint attrib, already fulfilled by 'breaker' flag
