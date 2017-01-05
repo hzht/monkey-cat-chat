@@ -9,7 +9,8 @@ github.com/hzht
 * pyftpdlib
 
 Description:
-MS Lync clone. Furball? Kinda. Written & tested on Python 3.4.4, Windows7 64
+MS Lync clone. Written & tested on Python 3.4.4, Windows7 64
+version 1.1
 '''
 
 import sys, os.path
@@ -26,7 +27,7 @@ from pyftpdlib.servers import ThreadedFTPServer
 from pyftpdlib.authorizers import DummyAuthorizer, AuthenticationFailed
 import ftplib
 
-import emoji # includes class 'SelectEmoji' & global var 'ed', emoji dict
+import emoji # includes class 'SelectEmoji' & 'ed', emoji dict
 
 try: 
     import win32gui, simpleaudio # 3rd party & OS dependent modules
@@ -34,6 +35,7 @@ except ImportError:
     print('download win32gui & simpleaudio for better functionality')
 
 # GLOBALS
+own_ip = socket.gethostbyname(socket.gethostname()) # IP addr
 record = [] # user details
 user_file = r".\user.txt"
 
@@ -42,7 +44,7 @@ chat_session_port = 6166 # TCP port on which server listens on
 beacon_interval = 60
 ftp_cloak_port = 14415
 
-known_clients_DB = {} # DB: info received from remote chat clients
+known_clients_DB = {} # {'hostname': ['alias', 'first', 'last', 'IP', 75, 6]}
 
 status = False # false = offline, true = online
 
@@ -73,7 +75,7 @@ class MainWindow(QtGui.QMainWindow):
         self.off.clicked.connect(self.go_offline)
     
         self.state = QtGui.QLabel('', self)
-        self.state.setGeometry(135,40,48,48)  # x, y, width, height
+        self.state.setGeometry(135,40,48,48) # x, y, width, height
         self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
 
         self.add = QtGui.QPushButton('Add', self)
@@ -82,14 +84,14 @@ class MainWindow(QtGui.QMainWindow):
         self.add.setIcon(QtGui.QIcon('images/invite.png'))
         self.add.setIconSize(QtCore.QSize(21, 21))
         self.add.setToolTip('Add IP address of colleague to chat')
-        self.add.clicked.connect(adder.show_it) # dialog box for adding IP
+        self.add.clicked.connect(lambda: adder.show_it(mode=None))
         self.add.setVisible(False)
 
         self.mwL3 = QtGui.QLabel('Double click on person to begin chat', self)
         self.mwL3.setFixedSize(200,12)
         self.mwL3.move(15, 285)
 
-        self.userlist = QtGui.QListWidget(self)  # list of online users
+        self.userlist = QtGui.QListWidget(self) # list of online users
         self.userlist.move(15, 111)
         self.userlist.setFixedSize(170, 162)
         self.userlist.doubleClicked.connect(
@@ -105,6 +107,9 @@ class MainWindow(QtGui.QMainWindow):
 
         self.mwHostname = QtGui.QAction('&Hostname', self)
         self.mwHostname.triggered.connect(lambda: self.msg_box('hostname'))
+        self.mwAdd_via_IP = QtGui.QAction('&Add via IP address...', self)
+        self.mwAdd_via_IP.triggered.connect(lambda: adder.show_it(mode=None))
+        self.mwAdd_via_IP.setEnabled(False) 
         self.mwAbout = QtGui.QAction('&About', self)
         self.mwAbout.triggered.connect(lambda: self.msg_box('about')) 
 
@@ -112,10 +117,14 @@ class MainWindow(QtGui.QMainWindow):
         self.mwBar = self.menuBar()
         self.mwHelp = self.mwBar.addMenu('&Help')
         self.mwHelp.addAction(self.mwHostname)
+        self.mwHelp.addAction(self.mwAdd_via_IP)
         self.mwHelp.addAction(self.mwAbout)
 
         self.show()
 
+    def closeEvent(self, event): # pre X checks
+        self.go_offline()
+    
     def alternate_ui(self, mode):
         global status
         if mode == False: # False = 'basic' mode
@@ -142,7 +151,6 @@ class MainWindow(QtGui.QMainWindow):
             self.add.setVisible(True)
 
             status = True # only time all services are offline & status = True
-            # why above ln? CW will display 'offline' lest status is True
             # tight coupling to be fixed
             self.tcp_launch() # starts TCP server chain
             self.e = FtpSvr() # instance of threading obj
@@ -156,36 +164,27 @@ class MainWindow(QtGui.QMainWindow):
 
     def new_session(self, conn, addr, mode): # instance based on ChatWindow
         if mode == 'initiator': # initiate request      
-            self.unpacked = (self.userlist.currentItem().text().split(':'))
-            self.alias_name = self.unpacked[0][:-4]
-            self.alias_state = self.unpacked[-1][1:]
-            if self.alias_state == 'online':
+            unpacked = (self.userlist.currentItem().text().split(':'))
+            alias_name = unpacked[0][:-4]
+            alias_state = unpacked[-1][1:]
+            if alias_state == 'online':
                 try: # obtain IP from known_clients_DB & pass to CW instance
                     for k, v in known_clients_DB.items():
-                        if v[0] == self.alias_name:
-                            self.sessions[v[0]] = ChatWindow(
-                                name=self.alias_name,
-                                ip=known_clients_DB[k][3],
+                        if v[0] == alias_name and v[3] not in self.sessions:
+                            self.sessions[v[3]] = ChatWindow(addr=v[3], 
                                 mode='initiator') # remote alias name and IP
+                        elif v[0] == alias_name and v[3] in self.sessions:
+                            self.msg_box('existing')
                 except Exception:
-                    pass
+                    print(sys.exc_info())
             else:
                 self.msg_box('warning')
-
         elif mode == 'acceptor': # receive request
-            self.conn = conn
-            self.addr = addr
-            self.sessions[self.addr[0]] = ChatWindow(
-                name=self.addr[0],
-                conn=self.conn,
-                addr=self.addr,
-                mode='acceptor')
-
-        elif mode == 'adv_initiate': # add manually IP addr in adv mode
-            self.addr = addr
+            self.sessions[addr] = ChatWindow(conn=conn,
+                                             addr=addr, mode='acceptor')
+        elif mode == 'adv_initiate': 
             try:
-                self.sessions[addr] = ChatWindow(name=self.addr,
-                                                 ip=self.addr,mode='initiator')
+                self.sessions[addr] = ChatWindow(addr=addr, mode='initiator')
             except TimeoutError: # unresponsive or offline remote host
                 self.msg_box('adv_warning')
                 print(sys.exc_info())
@@ -206,18 +205,21 @@ class MainWindow(QtGui.QMainWindow):
         elif msgtype == 'hostname':
             self.info.setText(
                 'hostname: ' + socket.gethostname() + '\n' + 'IP addr: '
-                + socket.gethostbyname(socket.gethostname()))
+                + own_ip)
             self.info.setWindowTitle('Hostname | IP')
         elif msgtype == 'adv_warning':
             self.info.setText('Unable to connect to specified IP address, '
                               'person may be offline.')
             self.info.setWindowTitle('Warning!')
+        elif msgtype == 'existing':
+            self.info.setText('You already have an open session with the '
+                              'person.')
+            self.info.setWindowTitle('Warning')
         self.info.show()
 
     def go_online(self): # turn all services on
         returning_user() # first determination of global 'status'
         if status == False:
-            self.state.setGeometry(135,36,48,48)
             self.state.setPixmap(QtGui.QPixmap('images/offline.png'))
         elif status == True:
             self.state.setPixmap(QtGui.QPixmap('images/online.png'))
@@ -233,8 +235,9 @@ class MainWindow(QtGui.QMainWindow):
             self.e = FtpSvr() # instance of threading obj
             self.e.start()
 
-            self.on.setEnabled(False) # deterrent for consecutive on/off clicks
+            self.on.setEnabled(False) # deterrent for consec on/off clicks
             self.off.setEnabled(True)
+            self.mwAdd_via_IP.setEnabled(True)
         
     def go_offline(self): # clears the local DB & self.a-d + TcpSvr stop
         global status
@@ -242,8 +245,9 @@ class MainWindow(QtGui.QMainWindow):
 
         try:
             self.e.stop()
+            self.tcp_server.stop()
         except AttributeError:
-            pass
+            print('#21', sys.exc_info())
 
         for i in self.sessions: # bye bye sessions
             self.sessions[i].interrupt()
@@ -252,6 +256,7 @@ class MainWindow(QtGui.QMainWindow):
 
         self.on.setEnabled(True) 
         self.off.setEnabled(False)
+        self.mwAdd_via_IP.setEnabled(False)
 
         self.fit_receive.clear()
 
@@ -268,11 +273,11 @@ class MainWindow(QtGui.QMainWindow):
 
 #=============================================================================#
 
-# Advanced mode, add IP dialog box
-class AddIPManually(QtGui.QWidget):
+# Advanced mode, add IP dialog box, invite participant interface
+class AddIPManually(QtGui.QWidget): 
     def __init__(self):
-            QtGui.QWidget.__init__(self)
-            self.initUI()
+        QtGui.QWidget.__init__(self)
+        self.initUI()
 
     def initUI(self):
         self.setWindowTitle('Chat_v1.0')
@@ -290,31 +295,17 @@ class AddIPManually(QtGui.QWidget):
         self.ipbox.setFixedSize(105, 21)
         self.ipbox.move(15, 30)
 
-    def show_it(self):
+    def show_it(self, mode=None): 
+        self.mode = mode 
         self.ipbox.clear()
         self.show()
-    
-    def port_verifier(self, n): # verify chat_session_port is open on rhost
-        try:            
-            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.s.settimeout(1)
-            self.test_result = self.s.connect_ex((n, chat_session_port))
-        except Exception:
-            print(sys.exc_info())
-        finally:
-            self.s.close()
 
-        if self.test_result == 0: # chat_session_port IS open on rhost
-            self.launch_connection(n) # kick it off!
-        elif self.test_result != 0:
-            AW.msg_box('adv_warning')
-    
-    def validate_ip(self, n): # ensure IP entered is to IPv4 standard
-        self.ip = n.split('.')
-        if len(self.ip) != 4:
+    def validate_ip(self, n): # ensure IP entered is to IPv4 standard 
+        ip = n.split('.') 
+        if len(ip) != 4:
             warn('ip_err')
         else:
-            for octet in self.ip:
+            for octet in ip:
                 if not octet.isdigit():
                     warn('ip_err')
                     self.ipbox.clear()
@@ -323,11 +314,92 @@ class AddIPManually(QtGui.QWidget):
                     warn('ip_err2')
                     self.ipbox.clear()
                     break
-            self.port_verifier(n)
+        if self.ipbox.displayText() != '' and len(ip) == 4:
+            self.verify_n_launch(n)
+    
+    def verify_n_launch(self, n): # verify chat_session_port is open n launch
+        try: 
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            test_result = s.connect_ex((n, ftp_cloak_port)) 
+        except Exception:
+            print(sys.exc_info())
+        finally:
+            s.close()
 
-    def launch_connection(self, ip):
-        AW.new_session(conn='', addr=ip, mode='adv_initiate')
-        self.close()
+        if test_result == 0: # 0 signifies open port 
+            if self.mode == None: 
+                if n not in AW.sessions: 
+                    AW.new_session(conn='', addr=n, mode='adv_initiate') 
+                    self.close() 
+                else: 
+                    AW.msg_box('existing')
+            elif self.mode == 'invite_participant': 
+                self.emit(QtCore.SIGNAL('add_moar_cowbell'), n, 'more_peeps')
+                self.mode = None
+                self.close()
+            
+        elif test_result != 0:
+            AW.msg_box('adv_warning')
+
+            
+#=============================================================================#
+
+# User list snapshot - GUI in basic mode for adding more participants
+class UserSnapshot(QtGui.QWidget):
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        self.initUI()
+    def initUI(self):
+        self.setWindowTitle('Add participants')
+        self.setFixedSize(180, 176) # w x h
+
+        label = QtGui.QLabel('Double-click or\n'
+                             'use IP address to\n'
+                             'add person.', self)
+        label.move(15, 7) # x & y
+
+        add_button = QtGui.QPushButton('', self)
+        add_button.setFixedSize(24, 24)
+        add_button.move(110, 16)
+        add_button.setIcon(QtGui.QIcon('images/invite.png'))
+        add_button.setIconSize(QtCore.QSize(16, 16))
+        add_button.setToolTip('Use IP address of person to add into session.')
+        add_button.clicked.connect(lambda: adder.show_it('invite_participant'))
+
+        ref_button = QtGui.QPushButton('', self)
+        ref_button.setFixedSize(24, 24)
+        ref_button.move(140, 16)
+        ref_button.setIcon(QtGui.QIcon('images/refresh.png'))
+        ref_button.setIconSize(QtCore.QSize(16, 16))
+        ref_button.setToolTip('Refresh to see who you can add into session.')
+        ref_button.clicked.connect(self.refresh)
+
+        self.snapshot = QtGui.QListWidget(self)
+        self.snapshot.move(15, 60)
+        self.snapshot.setFixedSize(150, 100)
+        self.snapshot.doubleClicked.connect(self.search_kc_DB) 
+        
+    def show_it(self):
+        self.show()
+        self.refresh()
+
+    def refresh(self):
+        self.snapshot.clear()
+        for host in sorted(known_clients_DB):
+            if known_clients_DB[host][5] > 0:
+                self.snapshot.addItem(known_clients_DB[host][0])
+    def search_kc_DB(self): 
+        selection = self.snapshot.currentItem().text()
+        try:
+            for k, v in known_clients_DB.items():
+                if v[0] == selection:
+                    ip = v[3] # ip
+                    self.emit(
+                        QtCore.SIGNAL('add_moar_bongos'), ip, 'more_peeps') 
+                    self.close()
+        except Exception:
+            print(sys.exc_info())
 
 
 #=============================================================================#
@@ -336,6 +408,7 @@ class AddIPManually(QtGui.QWidget):
 class TcpSvr(QtCore.QThread):
     def __init__(self):
         QtCore.QThread.__init__(self)
+        self.end_flag = False
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind(('', chat_session_port))
@@ -345,116 +418,171 @@ class TcpSvr(QtCore.QThread):
         self.wait()
 
     def run(self):
-        while status == True:
+        while status == True and self.end_flag == False:
             connection, client_addr = self.server.accept()
             self.emit(QtCore.SIGNAL('server_socket'),
-                      connection, client_addr, 'acceptor')
+                      connection, client_addr[0], 'acceptor')
 
-class ClientThreadRecv(QtCore.QThread): # receiving component loop
+    def stop(self): # added 10 dec 16
+        self.server.close()
+        self.end_flag = True
+
+class ClientThreadRecv(QtCore.QThread): # incoming sock loop
     def __init__(self, conn, addr=None):
         QtCore.QThread.__init__(self)
         self.conn = conn
         self.addr = addr
-
+        
     def __del__(self): 
         self.wait()
-
+        
     def run(self):
         try:    
-            while status == True: # sentinel                
-                self.data = self.conn.recv(4096) # incoming...! 
-                self.emit(QtCore.SIGNAL('chat_window_recv'), self.data) # pipe
-                if self.data == b'':
+            while status == True: # sentinel 
+                data = self.conn.recv(4096) # incoming...! 
+                self.emit(QtCore.SIGNAL(self.addr), data, self.addr) 
+                if data == b'':
                     break
-                elif self.data == b'<<b>>':
-                    self.emit(QtCore.SIGNAL('poke_request'))
-                # elif statement for emojis! 
         except (ConnectionAbortedError, ConnectionResetError,
                 OSError, WindowsError):
-            print(sys.exc_info()) # catch em all (or almost all)! 
+            print(sys.exc_info()) # catch em all (or almost all) 
             pass 
         finally:
             self.conn.close() # clean up
             if status == True: # global status conditions
-                self.emit(QtCore.SIGNAL('connection_error'),
-                          'closed_gracefully')
+                self.emit(QtCore.SIGNAL(self.addr + '_conn_err'),
+                          'closed_gracefully', self.addr)
             elif status == False:
-                self.emit(QtCore.SIGNAL('connection_error'), 'big_off_button')
+                self.emit(QtCore.SIGNAL('connection_error'),
+                          'big_off_button')
 
 #=============================================================================#
 
 # INDIVIDUAL CHAT WINDOWS - new process for each chat window
 class ChatWindow(QtGui.QWidget):
-    def __init__(self, name=None, ip=None, conn=None, addr=None, mode=None):
-        QtGui.QWidget.__init__(self)
-        self.wintitle = name
-        self.ip = ip
-        self.conn = conn
-        self.addr = addr
-        self.mode = mode
 
-        self.emo_kid = emoji.SelectEmoji() # emoji popup object
-        self.emo_buffer_send = [] # buffer per message - cleared upon 'send'
-        self.emo_buffer_log = [] # mirrored list - cleared upon update to log
+    def __init__(self, conn=None, addr=None, mode=None): 
+        QtGui.QWidget.__init__(self)
+        self.wintitle = ''
+        self.conn = conn
+        self.addr = addr # required?
+        self.mode = mode
+        self.party = {} # key=str(IP), val=['alias', send_conn, recv_conn]
+        self.facilitator = 0 # increment from first add_participant
+
+        self.add_participants(ip=self.addr, flag='initial')
+        self.add_participants(ip=own_ip, flag='self')
+        
         self.multiple_fit = dict() # keeps entries of all FIT streams (send)
         self.f_in_transit = False # flag for file(s) transfer in prog (send)
-        
-        if self.mode == 'initiator': # initiate conn calls for send/receive
-            self.cl_socket = self.connect_to_svr() # sender
-            self.cl_socket.connect((ip, chat_session_port))
-            self.associated_sock_recv = ClientThreadRecv(self.cl_socket) # recv
-            self.addr = [None] # cheat: caters for closeEvent self.addr[0]
-    
-        elif self.mode == 'acceptor': # initiate conn calls for send/receive
-            self.associated_sock_recv = ClientThreadRecv(self.conn,
-                                                         addr=self.addr)
-            for key in known_clients_DB: # for missing alias
-                if known_clients_DB[key][3] == addr[0]:
-                    self.wintitle = known_clients_DB[key][0] 
 
-        self.associated_sock_recv.start()
+        self.emo_kid = emoji.SelectEmoji() # emoji
+        self.emo_buffer_send = [] # buffer per message - cleared upon 'send'
+        self.emo_buffer_log = [] # mirrored list - cleared upon update to log
 
-        self.connect(self.associated_sock_recv,
-                     QtCore.SIGNAL('chat_window_recv'), self.receive_text)
-        self.connect(self.associated_sock_recv,
-                     QtCore.SIGNAL('poke_request'), self.poked)
-        self.connect(self.associated_sock_recv,
-                     QtCore.SIGNAL('connection_error'), self.msgs_n_errors)
-        self.connect(self.emo_kid, QtCore.SIGNAL('emoji_to_input'),
-                     self.add_emoji) # catch emit from emoji mod
-        
+        self.connect(self.emo_kid,
+                     QtCore.SIGNAL('emoji_to_input'), self.add_emoji) 
+        self.connect(adder,
+                     QtCore.SIGNAL('add_moar_cowbell'), self.add_participants)
+        self.connect(online_users_snapshot,
+                     QtCore.SIGNAL('add_moar_bongos'), self.add_participants)
         self.initUI()
+
+    def add_participants(self, ip, flag):
+        if flag == 'self': # own details
+            self.party[own_ip] = [ 
+                record[0], 
+                None,
+                None
+            ]
+            return # skip establish_callbacks(ip)
+        elif flag == 'initial':
+            if self.mode == 'initiator': # initiate conn calls for send/receive
+                cl_sock = self.connect_to_svr()
+                cl_sock.connect((ip, chat_session_port))
+                associated_sock_recv = ClientThreadRecv(conn=cl_sock, addr=ip) 
+
+                self.party[ip] = [ # remote host
+                    None, # alias
+                    cl_sock, # send sock
+                    associated_sock_recv # recv sock
+                    ]
+                
+            elif self.mode == 'acceptor': # initiate conn calls for send/rec
+                associated_sock_recv = ClientThreadRecv(conn=self.conn,addr=ip)
+                
+                self.party[ip] = [ 
+                    None, 
+                    self.conn,
+                    associated_sock_recv
+                    ]
+        elif flag == 'more_peeps': 
+            if ip in self.party: 
+                warn('existing_participant')
+                return 
+            else:
+                cl_sock = self.connect_to_svr()
+                cl_sock.connect((ip, chat_session_port))
+                associated_sock_recv = ClientThreadRecv(conn=cl_sock, addr=ip)
+                
+                self.party[ip] = [
+                    None,
+                    cl_sock,
+                    associated_sock_recv
+                    ]
+
+                self.facilitator += 1
+                
+        self.establish_callbacks(ip) 
+        self.party[ip][2].start() # kick it off
+
+    def establish_callbacks(self, ip):
+        self.connect(self.party[ip][2], # receive_pipe
+                    QtCore.SIGNAL(ip), self.receive_msg)
+        self.connect(self.party[ip][2], # error & control messages
+                     QtCore.SIGNAL(ip + '_conn_err'), self.msgs_n_errors)
 
     def closeEvent(self, event): # pre X checks
         self.fit_mechanism(mode='update_f_in_transit_flag')
-        if (self.f_in_transit == True or
-            self.ip in AW.fit_receive or self.addr[0] in AW.fit_receive):
-            fit_msg = ('Warning: file(s) transfer currently in progress. '
-                       'Are you sure you want to Quit session and end '
-                       'file transfer?')
-            self.fit_warn = QtGui.QMessageBox.question(
-                self, 'Message', fit_msg,
+        if (self.f_in_transit == True or self.addr in AW.fit_receive):
+            fit_warn = QtGui.QMessageBox.question(
+                self, 'Message', self.fit_msg,
                 QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
-            if self.fit_warn == QtGui.QMessageBox.Yes:
+            if fit_warn == QtGui.QMessageBox.Yes:
                 try:
                     self.close_sockets()
                 except Exception:
                     print(sys.exc_info())
                 finally:
+                    del AW.sessions[self.addr] 
                     self.close()
             else:
                 event.ignore()
-        else:         
-            self.close_sockets()
-            self.emo_kid.close() 
-            self.close()
+        else: # facilitator?warn:pass 
+            if self.facilitator > 0:
+                fac_warn = QtGui.QMessageBox.question(
+                    self, 'Warning', self.fac_msg,
+                    QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
+                if fac_warn == QtGui.QMessageBox.Yes: 
+                    self.close_sockets()
+                    del AW.sessions[self.addr]
+                    self.close()
+                else:
+                    event.ignore()
+            else:
+                self.close_sockets()
+                del AW.sessions[self.addr]
+                self.close()
+
+    def connect_to_svr(self): # required? or implement on ln 403?
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        return client
 
     def close_sockets(self): # close session related TCP socks
-        try:
-            if self.mode == 'initiator': 
-                self.client.close()
-            elif self.mode == 'acceptor':
-                self.conn.close()
+        try: 
+            for i in self.party:
+                if self.party[i][1] != None:
+                    self.party[i][1].close() 
         except Exception:
             print(sys.exc_info())
        
@@ -465,13 +593,14 @@ class ChatWindow(QtGui.QWidget):
 
         # send message 
         self.send = QtGui.QPushButton('&send', self)
-        self.send.move(210, 230)
-        self.send.clicked.connect(self.send_text)
+        self.send.setFixedSize(74, 24)
+        self.send.move(211, 198)
+        self.send.clicked.connect(self.send_msg)
 
         self.log = QtGui.QTextEdit(self)
         self.log.setFixedSize(270, 175)
         self.log.move(15,15)
-        self.log.setReadOnly(False)
+        self.log.setReadOnly(True)
         self.log.verticalScrollBar()
         self.cursor = QtGui.QTextCursor(self.log.document())
 
@@ -507,42 +636,63 @@ class ChatWindow(QtGui.QWidget):
         self.add_emoji_button.setToolTip('Add emoji to your message')
         self.add_emoji_button.clicked.connect(self.emo_kid.show_it)
 
-        # invite to conversation
+        # invite to conversation: to complete
         self.invite_button = QtGui.QPushButton('', self)
         self.invite_button.setFixedSize(24, 24)
         self.invite_button.move(105, 198)
         self.invite_button.setIcon(QtGui.QIcon('images/invite.png'))
         self.invite_button.setIconSize(QtCore.QSize(22, 22))
         self.invite_button.setToolTip('Invite others to this conversation')
+        if SW.mode_of_operation == True: # adv mode
+            self.invite_button.clicked.connect(
+                lambda: adder.show_it(mode='invite_participant'))
+        else: # basic mode
+            self.invite_button.clicked.connect(
+                lambda: online_users_snapshot.show_it())
+
+        # participants list - for basic mode
+        self.participants = QtGui.QTextEdit(self)
+        self.participants.setFixedSize(74, 80)
+        self.participants.move(211, 230)
+        self.participants.setReadOnly(True)
+        self.participants.verticalScrollBar()
+        self.participants.setStyleSheet('background: lightGray')
+        self.participants.setToolTip('List of participants in session')
         
         self.show()
+        
+    def alias_exchange(self, flag): # to complete
+        if flag == "initiator": 
+            pass
+        elif flag == "acceptor":
+            pass
 
     def add_emoji(self, icon):
         smiley = QtGui.QPixmap(emoji.ed[icon]).toImage()
         self.user_input.textCursor().insertImage(smiley)
-        self.emo_buffer_send.append(icon) # for use in transmission of msg
-        self.emo_buffer_log.append(icon) # for use in updating self.log
+        self.emo_buffer_send.append(icon) # transmission of msg
+        self.emo_buffer_log.append(icon) # updating self.log
 
     def parse_txt(self, raw, mode): # for emoji, 1)send 2)log or 3)receive
         parsing = ''
         if mode == 'to_transf':
             for char in raw:
-                if char == u'\ufffc':
+                if char == '\ufffc':
                     lookup = self.emo_buffer_send.pop(0)
                     parsing += lookup
                 else: # normal text
                     parsing += char
             return parsing
-        elif mode == 'sender_self.log': # refactor build entire string first?
+        elif mode == 'sender_self.log': 
             self.log.insertPlainText('you: ')
             for char in raw:
-                if char == u'\ufffc':
+                if char == '\ufffc':
                     smiley = QtGui.QPixmap(
                         emoji.ed[self.emo_buffer_log.pop(0)]).toImage()
                     self.log.textCursor().insertImage(smiley)
                 else: # normal text
                     self.log.insertPlainText(char)
-        elif mode == 'receiver_self.log':
+        elif mode == 'recv_self.log':
             disect = str(raw, 'utf-8')
             split = disect.split('<?>')
             for block in split:
@@ -552,74 +702,72 @@ class ChatWindow(QtGui.QWidget):
                     self.log.textCursor().insertImage(smiley)
                 else: # normal text
                     self.log.insertPlainText(block)
-        self.log.setTextCursor(self.cursor) # cursor to bottom                
+        self.log.setTextCursor(self.cursor) 
 
-    def send_text(self, msgs=None, fname=None, fnamealt=None):
-        self.log.setTextCursor(self.cursor) # move cursor to bottom
+    def send_msg(self, msgs=None, fname=None, fnamealt=None):
+        self.log.setTextCursor(self.cursor) # cursor to bottom
         if not msgs:
-            try: 
-                if self.mode == 'initiator':    
-                    self.string = self.user_input.toPlainText() + '\n'
-                    self.parsed = self.parse_txt(self.string, mode='to_transf')
-                    self.cl_socket.sendall(
-                        bytearray((record[0] + ': ' + self.parsed)
-                                  .encode('utf-8'))) # alias prefix
-                elif self.mode == 'acceptor':
-                    self.string = self.user_input.toPlainText() + '\n'
-                    self.parsed = self.parse_txt(self.string, mode='to_transf')
-                    self.conn.sendall(
-                        bytearray((record[0] + ': ' + self.parsed)
-                                  .encode('utf-8')))
+            try:
+                string = self.user_input.toPlainText() + '\n'
+                parsed = self.parse_txt(string, mode='to_transf')
+                for i in self.party:
+                    if self.party[i][1] != None:
+                        self.party[i][1].sendall(
+                            bytearray((record[0] + ': ' +
+                                       parsed).encode('utf-8')))
             except Exception:
                 print(sys.exc_info())
-                
-            self.parse_txt(self.string, mode='sender_self.log')    
+            
+            self.parse_txt(string, mode='sender_self.log') 
             self.user_input.clear() # clear the input text box
             self.emo_buffer_send.clear() # clear emoji buffer
             self.emo_buffer_log.clear() # clear mirror
 
-        elif msgs == 'ft_initiate': # cheat - all FT sigs controlled by client
+        elif msgs == 'ft_initiate': # cheat: FT signals controlled by client
             if fnamealt != None:
-                self.string = ('\n*** receiving file [' + fname + '] as ' +
+                string = ('\n*** receiving file [' + fname + '] as ' +
                                fnamealt + ' ***\n')
             else:
-                self.string = '\n*** receiving file [' + fname + '] ***\n'
-            try:    
-                if self.mode == 'initiator':
-                    self.cl_socket.sendall(
-                        bytearray((self.string).encode('utf-8')))
-                elif self.mode == 'acceptor': # to refactor
-                    self.conn.sendall(
-                        bytearray((self.string).encode('utf-8')))
+                string = '\n*** receiving file [' + fname + '] ***\n'
+            try:
+                self.conn.sendall(bytearray((string).encode('utf-8')))
             except Exception:
                 print(sys.exc_info()) 
         elif msgs == 'ft_complete':
             try:
-                if self.mode == 'initiator':
-                    self.cl_socket.sendall(
-                        b'\n*** file successfully received ***\n')
-                elif self.mode == 'acceptor':
-                    self.conn.sendall(
-                        b'\n*** file successfully received ***\n')
+                self.conn.sendall(
+                    b'\n*** file successfully received ***\n')
             except Exception:
                  print(sys.exc_info())
         
-    def receive_text(self, datapipe): # refactor?
-        self.datapipe = datapipe # holds ClientThreadRecv i.e. self.conn.recv()
+    def receive_msg(self, msg, source): # to be revamped
         self.log.setTextCursor(self.cursor)
-        if self.mode == 'initiator' and datapipe != b'<<b>>':
-            self.parse_txt(self.datapipe, mode='receiver_self.log') # parse
-        elif self.mode == 'acceptor' and datapipe != b'<<b>>':
-            self.parse_txt(self.datapipe, mode='receiver_self.log') # parse
-        elif datapipe == b'<<b>>':
-            pass
-        
+        if len(msg) > 3: # normal messages
+            self.parse_txt(msg, mode='recv_self.log')
+        else: # 3 or less, i.e. control signals
+            if msg == b'\xe2\xa2\x83': # poke
+                self.poked()
+            elif msg == b'xe2\xa2\x84': # 'newbie' - new participant
+                pass
+            elif msg == b'xe2\xa2\x85': # 'p_list' - participant list
+                pass
+            elif msg == b'xe2\xa2\x86': # 'update' - update participant
+                pass 
+
+        if len(self.party) > 2: # relay if required
+            for i in self.party:
+                if i != source and self.party[i][1] != None:
+                    self.party[i][1].sendall(msg)
+                    
         try: # flash window - require win32gui mod
             self.flash_window()
-        except NameError:   # incase win32gui is not imported
+        except NameError: 
             print(sys.exc_info())
 
-        if SW.btf_toggle_state == True: # bring to front
+        self.btf()
+
+    def btf(self): # bring chat window to front
+        if SW.btf_toggle_state == True: 
             self.setWindowState(
                 self.windowState() &
                 ~QtCore.Qt.WindowMinimized |
@@ -630,7 +778,15 @@ class ChatWindow(QtGui.QWidget):
         if not self.isActiveWindow():
             self.flash = win32gui.FindWindow(None, self.wintitle)
             win32gui.FlashWindow(self.flash, True)
-
+    
+    def cs_process(self, control_sig): # control signal process - to be dumped
+        if control_sig == 'newbie':
+            pass
+        elif control_sig == 'p_list':
+            pass
+        elif control_sig == 'update':
+            pass
+     
     def transfer_file(self): 
         folder_file_path = QtGui.QFileDialog.getOpenFileName() # entire path
         if folder_file_path == '': # action cancelled
@@ -656,12 +812,12 @@ class ChatWindow(QtGui.QWidget):
                 file_name += char
 
             if self.mode == 'initiator': # launch FTP client session
-                self.transf_obj = FtpClient(self.ip, folder_file_path,
+                self.transf_obj = FtpClient(self.addr, folder_file_path,
                                             file_name, file_ext_len) 
             elif self.mode == 'acceptor': 
-                self.transf_obj = FtpClient(self.addr[0], folder_file_path,
+                self.transf_obj = FtpClient(self.addr, folder_file_path,
                                             file_name, file_ext_len)    
-            # reference dict() built to call methods in bulk 
+            # reference dict() built to later call methods in bulk 
             self.multiple_fit[file_name] = ([self.transf_obj, True]) 
                 
             self.transf_obj.start()
@@ -678,10 +834,9 @@ class ChatWindow(QtGui.QWidget):
                 'ftp_login_error'), self.msgs_n_errors)
             
     def do_some_poking(self):
-        if self.mode == 'initiator':
-            self.cl_socket.sendall(b'<<b>>')
-        elif self.mode == 'acceptor':
-            self.conn.sendall(b'<<b>>')
+        for i in self.party:
+            if self.party[i][1] != None: # ignore self entry & non-trunk 
+                self.party[i][1].sendall(b'\xe2\xa2\x83')
 
     def poked(self):
         if SW.snd_toggle_state == True:
@@ -692,27 +847,39 @@ class ChatWindow(QtGui.QWidget):
         try:
             self.flash_window()
         except NameError:
-            pass 
-            
-    def connect_to_svr(self): # important: initiator mode, sock obj
-        self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        return self.client
+            pass
 
-    def msgs_n_errors(self, msgtype, fobj=None, fobjalt=None):
+    def sock_verifier(self, ip, index, mode=None): # check existance of sockObj
+        if mode == 'nullify': 
+            del self.party[ip]
+        at_least_one_sock = False
+        if len(self.party) >= 2: 
+            for i in self.party: 
+                if self.party[i][index] != None: # an entry with a sock exists
+                    at_least_one_sock = True
+                    break 
+                else: 
+                    continue 
+        return at_least_one_sock 
+    
+    def msgs_n_errors(self, msgtype, ip, fobj=None, fobjalt=None):
         try:
             if msgtype == 'sent_file':
                 self.log.insertPlainText('\n*** file successfully sent ***\n')
-                self.send_text(msgs='ft_complete')
+                self.send_msg(msgs='ft_complete')
                 self.multiple_fit[fobj][1] = False
-                self.f_in_transit = False    
+                self.f_in_transit = False 
             else: 
                 if msgtype == 'closed_gracefully':
-                    self.log.insertPlainText(
-                        '\n*** Session was closed by remote user. Close this '
-                        'session window and relaunch once the remote user '
-                        'status shows \'online\' again. ***\n')
-                    self.fit_mechanism()
-                    self.lockout_cw()
+                    verified = self.sock_verifier(ip, 1, mode='nullify')
+                    if verified == False: 
+                        self.log.insertPlainText(
+                            '\n*** Session was closed by remote user. Close '
+                            'this session window and relaunch once the remote'
+                            ' user status shows \'online\' again. ***\n')
+                        self.fit_mechanism()
+                        self.lockout_cw()
+                    self.facilitator -= 1
                 elif msgtype == 'big_off_button': # interrupt
                     self.log.insertPlainText(
                         '\n*** You have currently gone \'offline\', please '
@@ -729,7 +896,7 @@ class ChatWindow(QtGui.QWidget):
                     else:
                         self.log.insertPlainText(
                             '\n*** sending file [%s] ***\n' % fobj)
-                    self.send_text(
+                    self.send_msg(
                         msgs='ft_initiate', fname=fobj, fnamealt=fobjalt)
                 elif msgtype == 'ft_cancelled':
                     self.log.insertPlainText(
@@ -774,12 +941,31 @@ class ChatWindow(QtGui.QWidget):
 
     def interrupt(self): # called by MW when going 'offline'
         try:
-            if self.mode == 'initiator': 
-                self.client.close()
-            elif self.mode == 'acceptor':
-                self.conn.close()
+            self.conn.close()
         except Exception:
             print(sys.exc_info())
+
+    # messages embedded in class, used by inheritance search
+
+    fac_msg = ('You are a facilitator in this group session as you have '
+               'added one or more participants to the current chat session. '
+               'If you close the session, those who you added will also be '
+               'disconnected from the current group session. Do you want '
+               'to continue?')
+    fit_msg = ('Warning: file(s) transfer currently in progress. Are you '
+               'sure you want to Quit session and end file transfer?')
+    
+
+#=============================================================================#
+
+# ADD USERS TO CONVERSATION WINDOW
+class AddPeople(QtGui.QTextEdit): # to complete
+    def __init__(self):
+        QtGui.QTextEdit.__init__(self)
+        self.setWindowTitle('select users to current conversation')
+        self.setFixedSize(85, 81)                                               
+
+
 
 #=============================================================================#
 
@@ -880,9 +1066,9 @@ class SettingsWindow(QtGui.QWidget):
         self.show()
 
     def capture_settings(self):
-        if (len(self.alias.displayText()) == 0 or
-            len(self.first.displayText()) == 0 or
-            len(self.last.displayText()) == 0):
+        if (len(self.alias.displayText().strip()) == 0 or
+            len(self.first.displayText().strip()) == 0 or
+            len(self.last.displayText().strip()) == 0):
             warn('blank')
         else:
             global record # to be replace with object attribs
@@ -905,7 +1091,7 @@ class SettingsWindow(QtGui.QWidget):
             pickle.dump((self.btf_toggle_state,
                          self.snd_toggle_state), settings_file)
 
-    def alternate_state(self): # ensures change state only if state changes
+    def alternate_state(self): # ensures change to state only if state changes
         if self.mode_of_operation != bool(self.operation_mode.checkState()):
             self.mode_of_operation = bool(self.operation_mode.checkState())
             AW.alternate_ui(bool(self.operation_mode.checkState()))
@@ -915,7 +1101,7 @@ class SettingsWindow(QtGui.QWidget):
 
 #=============================================================================#
 
-# USER DETAILS - to become MainWindow obj attributes
+# USER DETAILS - put in MainWindow obj attributes
 def returning_user():
     global status
     if os.path.isfile(user_file) == True:
@@ -953,6 +1139,9 @@ def warn(flag):
                     'e.g. 192.168.0.2')
     elif flag == 'ip_err2':
         msg.setText('IP address entered is out of range.')
+    elif flag == 'existing_participant':
+        msg.setText('The participant you\'re trying to add is already '
+                    'in the conversation')
     msg.exec()
 
 #=============================================================================#
@@ -967,18 +1156,18 @@ def transceiver():
     
     while status == True and SW.mode_of_operation == False: # sentinel
         msg = trans.recvfrom(1024)
-        if msg[1][0] == socket.gethostbyname(socket.gethostname()): 
+        if msg[1][0] == own_ip: 
             continue # ignore local broadcasts - requires dirty trick below
         if msg[0].decode('utf-8').split(',')[0] == 'hola': # msg from pinger
             host = msg[0].decode('utf-8').split(',')[1]
             if host in known_clients_DB: 
-                known_clients_DB[host][5] = 4 # 4 sec ttl
+                known_clients_DB[host][5] = 4 # 4 sec ttl # todo: add t-lock
             else:
                 pinger(ip=host, mode='on_demand') # keep alive
         else: # a beacon alert (occurs less often)
             alias, first, last, host = msg[0].decode('utf-8').split(',')
             ip = msg[1][0]
-            if host not in known_clients_DB: # first time bcast? 
+            if host not in known_clients_DB: # first time bcast? # add t-lock
                 pinger(ip=ip, mode='reactive_beacon') # reply back 
             known_clients_DB[host] = [alias, first, last, ip, 75, 6]
             # 75 seconds no bcast countdown, if 0 then removed from dict,
@@ -999,10 +1188,10 @@ def create_message(msg):
         for i in record:
             message += i + ','
         return message + socket.gethostname() # 'alias, first, last, hostname'
-    else:
+    else:  
         return msg + ',' + socket.gethostname()
 
-def beacon():   # needs to run as a daemon / service
+def beacon(): 
     global beacon_interval
     beacon_interval = 60
     
@@ -1049,7 +1238,7 @@ def pinger(ip=None, mode=None): # starts when len(records) > 0 in DB
                     break
                 else:
                     time.sleep(1) # trick to ensure quick thread stop
-            except RuntimeError:    # caters for dictionary size change quirk
+            except RuntimeError: # for dictionary size change bug, to be del
                 print('caught a furball *** ', sys.exc_info())
         # dirty trick ends Transceiver daemon.
         # Self pinger sends to own transceiver
@@ -1070,7 +1259,7 @@ class FtpSvr(threading.Thread):
 
     def run(self):
         self.authorizer = DummyAuthorizer()
-        # to be hardened - with md5hash pw, 'settings': option to specify dir
+        # todo: hardened - with md5hash pw, 'settings': option to specify dir
         self.authorizer.add_user(
             username='userA',
             password='12345',
@@ -1119,11 +1308,13 @@ class FtpSvrHandler(FTPHandler):
     def on_file_received(self, file):
         print('received file: ', file)
 
+
 #=============================================================================#
 
-# ENCRYPTION: FtpSvr user password - to be developed in another module
+# ENCRYPTION: FtpSvr user password - todo: develop in another module
 class MD5Protect(DummyAuthorizer):
     pass 
+
 
 #=============================================================================#
 
@@ -1196,6 +1387,7 @@ class FtpClient(QtCore.QThread):
         
 # DATABASE: to become main window obj attribute
 # Keep alive component
+# todo: locking mechanism required for the modification of known_clients_DB
 def db_cleanup(): 
     global known_clients_DB
     expired = []
@@ -1233,6 +1425,7 @@ if __name__ == '__main__':
 
     SW = SettingsWindow()
     adder = AddIPManually()
+    online_users_snapshot = UserSnapshot()
     AW = MainWindow()
 
     sys.exit(Application.exec_()) # to do - ensure all threads stop properly
