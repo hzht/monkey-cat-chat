@@ -84,14 +84,14 @@ class MainWindow(QtGui.QMainWindow):
         self.add.setIcon(QtGui.QIcon('images/invite.png'))
         self.add.setIconSize(QtCore.QSize(21, 21))
         self.add.setToolTip('Add IP address of colleague to chat')
-        self.add.clicked.connect(lambda: adder.show_it(mode=None)) # dialog box for adding IP
+        self.add.clicked.connect(lambda: adder.show_it(mode=None)) 
         self.add.setVisible(False)
 
         self.mwL3 = QtGui.QLabel('Double click on person to begin chat', self)
         self.mwL3.setFixedSize(200,12)
         self.mwL3.move(15, 285)
 
-        self.userlist = QtGui.QListWidget(self)  # list of online users
+        self.userlist = QtGui.QListWidget(self) # list of online users
         self.userlist.move(15, 111) # x | y
         self.userlist.setFixedSize(170, 162)
         self.userlist.doubleClicked.connect(
@@ -109,7 +109,7 @@ class MainWindow(QtGui.QMainWindow):
         self.mwHostname.triggered.connect(lambda: self.msg_box('hostname'))
         self.mwAdd_via_IP = QtGui.QAction('&Add via IP address...', self)
         self.mwAdd_via_IP.triggered.connect(lambda: adder.show_it(mode=None))
-        self.mwAdd_via_IP.setEnabled(False) # hurray for mammaries
+        self.mwAdd_via_IP.setEnabled(False) 
         self.mwAbout = QtGui.QAction('&About', self)
         self.mwAbout.triggered.connect(lambda: self.msg_box('about')) 
 
@@ -122,7 +122,7 @@ class MainWindow(QtGui.QMainWindow):
 
         self.show()
 
-    def closeEvent(self, event): # pre X checks - added 10 dec 16 LOOL!
+    def closeEvent(self, event): # pre X checks
         self.go_offline()
     
     def alternate_ui(self, mode):
@@ -151,10 +151,9 @@ class MainWindow(QtGui.QMainWindow):
             self.add.setVisible(True)
 
             status = True # only time all services are offline & status = True
-            # why above ln? CW will display 'offline' lest status is True
             # tight coupling to be fixed
             self.tcp_launch() # starts TCP server chain
-            self.e = FtpSvr() # instance of threading obj update 5 jan 17 - perhaps move this to init? YES! 
+            self.e = FtpSvr() # instance of threading obj
             self.e.start()
 
     def tcp_launch(self): # TCP server related calls
@@ -177,7 +176,7 @@ class MainWindow(QtGui.QMainWindow):
                         elif v[0] == alias_name and v[3] in self.sessions:
                             self.msg_box('existing')
                 except Exception:
-                    pass
+                    print('ex: W', sys.exc_info())
             else:
                 self.msg_box('warning')
 
@@ -597,23 +596,26 @@ class ChatWindow(QtGui.QWidget):
             self.party[ip][2].start()
 
     def party_alias_repopulate(self): # mod wintitle and self.participants GUI
-        if len(self.party) > 2: # i.e. group
-            self.participants.clear() # first clear
-            for ip in self.party:
-                if ip != own_ip and self.party[ip][0] != None: 
-                    self.participants.append(
-                        MainWindow.trunc_alias(self.party[ip][0])
-                        )
-            self.setWindowTitle('Group Session...') 
-        else: # 2 people only
-            for ip in self.party:
-                if ip != own_ip:
-                    two_of_two = ip # the other party in 2 person session
-            self.setWindowTitle(self.party[two_of_two][0])
-            self.participants.clear()
-            self.participants.append(
-                MainWindow.trunc_alias(self.party[two_of_two][0])
-                )
+        try: 
+            if len(self.party) > 2: # i.e. group
+                self.participants.clear() # first clear
+                for ip in self.party:
+                    if ip != own_ip and self.party[ip][0] != None: 
+                        self.participants.append(
+                            MainWindow.trunc_alias(self.party[ip][0])
+                            )
+                self.setWindowTitle('Group Session...') 
+            else: # 2 people only
+                for ip in self.party:
+                    if ip != own_ip:
+                        two_of_two = ip # the other party in 2 person session
+                self.setWindowTitle(self.party[two_of_two][0])
+                self.participants.clear()
+                self.participants.append(
+                    MainWindow.trunc_alias(self.party[two_of_two][0])
+                    )
+        except UnboundLocalError:
+            print('ex: X', sys.exc_info())
         
     def establish_callbacks(self, ip):
         self.connect(self.party[ip][2], # receive_pipe
@@ -744,7 +746,7 @@ class ChatWindow(QtGui.QWidget):
         self.show()
         
         if self.mode == 'acceptor':
-            self.alias_exchange('hit_me') # all alias exchange starts here
+            self.alias_exchange('hit_me') # alias exchange starts here
 
     # OUTGOING CONTROL_SIGS to exchange participant ip/alias tween hosts
     def alias_exchange(self, flag, exclusion=None, target=None, obj=None):
@@ -780,7 +782,6 @@ class ChatWindow(QtGui.QWidget):
         if exclusion == None:
             if target == None: 
                 self.send_msg(msgs='alias_exchange', party_dict=header+body)
-                print('B')
             else: 
                 self.party[target][1].sendall(header+body)
         else:
@@ -842,9 +843,8 @@ class ChatWindow(QtGui.QWidget):
                 parsed = self.parse_msg(string, mode='to_transf')
                 for ip in self.party:
                     if len(self.party[ip]) > 1 and self.party[ip][1] != None:
-                        self.party[ip][1].sendall( # to refactor
-                            bytearray((record[0] + ': ' +
-                                       parsed).encode('utf-8')))
+                        self.party[ip][1].sendall((record[0] + ': ' +
+                                       parsed).encode('utf-8'))
             except Exception:
                 print('ex: K', sys.exc_info())
 
@@ -860,7 +860,7 @@ class ChatWindow(QtGui.QWidget):
             else:
                 string = '\n*** receiving file [' + fname + '] ***\n'
             try:
-                self.conn.sendall(bytearray((string).encode('utf-8')))
+                self.conn.sendall(string.encode('utf-8'))
             except Exception:
                 print('ex: L', sys.exc_info()) 
         elif msgs == 'ft_complete':
@@ -979,7 +979,7 @@ class ChatWindow(QtGui.QWidget):
 
     def sock_verifier(self, ip, index, mode=None): # check existance of sockObj
         if mode == 'nullify':
-            self.alias_exchange(flag='leaver', exclusion=ip, obj=ip) # new entry 6 jan 17 
+            self.alias_exchange(flag='leaver', exclusion=ip, obj=ip)
             del self.party[ip]
         at_least_one_sock = False
         if len(self.party) >= 2: 
@@ -993,6 +993,7 @@ class ChatWindow(QtGui.QWidget):
     
     def msgs_n_errors(self, msgtype, ip, fobj=None, fobjalt=None):
         try:
+            self.log.setTextCursor(self.cursor)
             if msgtype == 'sent_file':
                 self.log.insertPlainText('\n*** file successfully sent ***\n')
                 self.send_msg(msgs='ft_complete')
@@ -1337,8 +1338,7 @@ def beacon():
     broadcast.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
     while status == True and SW.mode_of_operation == False: # sentinel
-        broadcast.sendto(
-            bytearray(create_message('record').encode('utf-8')),
+        broadcast.sendto(create_message('record').encode('utf-8'),
             ('255.255.255.255', transceiver_port))
         while status == True: # nested loop creates 'immediate' end
             time.sleep(1)
@@ -1354,13 +1354,11 @@ def pinger(ip=None, mode=None): # starts when len(records) > 0 in DB
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
     if mode == 'on_demand': # caters for quirk "online, 4sec, offline"
-        sock.sendto(
-            bytearray(create_message('hola').encode('utf-8')),
+        sock.sendto(create_message('hola').encode('utf-8'),
             (ip, transceiver_port)
-            )  
+            )
     elif mode == 'reactive_beacon': # back to broadcaster
-        sock.sendto(
-            bytearray(create_message('record').encode('utf-8')),
+        sock.sendto(create_message('record').encode('utf-8'),
             (ip, transceiver_port)
             )
     else: 
@@ -1368,8 +1366,7 @@ def pinger(ip=None, mode=None): # starts when len(records) > 0 in DB
             try: 
                 if len(known_clients_DB) > 0: # sentinel
                     for host in known_clients_DB:
-                        sock.sendto(
-                            bytearray(create_message('hola').encode('utf-8')),
+                        sock.sendto(create_message('hola').encode('utf-8'),
                             (host, transceiver_port)
                             ) # calling card
                 else:
@@ -1379,15 +1376,14 @@ def pinger(ip=None, mode=None): # starts when len(records) > 0 in DB
                     break
                 else:
                     time.sleep(1) # trick to ensure quick thread stop
-            except RuntimeError:    # caters for dictionary size change quirk # update: won't be necessary once lock mechanism is in place
+            except RuntimeError: # caters for dictionary size change quirk
                 print('caught a furball *** ', sys.exc_info())
         # dirty trick ends Transceiver daemon.
-        # Self pinger sends to own transceiver
+        # Self pinger sends to own transceiver.
         # to initiate first clause and thus end loop.
-        sock.sendto(
-            bytearray(create_message('hola').encode('utf-8')),
+        sock.sendto(create_message('hola').encode('utf-8'),
             (socket.gethostname(), transceiver_port)
-            ) 
+            )
     sock.close()
 
 
@@ -1403,7 +1399,7 @@ class FtpSvr(threading.Thread):
 
     def run(self):
         self.authorizer = DummyAuthorizer()
-        # to be hardened - with md5hash pw, 'settings': option to specify dir
+        # todo: harden with md5hash pw, 'settings': option to specify dir
         self.authorizer.add_user(
             username='userA',
             password='12345',
@@ -1581,5 +1577,5 @@ if __name__ == '__main__':
     online_users_snapshot = UserSnapshot()
     AW = MainWindow()
 
-    sys.exit(Application.exec_()) # to do - ensure all threads stop properly
+    sys.exit(Application.exec_()) # ensure all threads stop properly
 
